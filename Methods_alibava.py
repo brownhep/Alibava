@@ -431,6 +431,7 @@ def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale
     hit_strip = array('i', [0])
     clust_charge = array ('f', [0.])
     strip_charge = array ('f', [0.])
+    tdctime = array ('f', [0.])
     #SR1_charge = array ('f', [0.])
     #SR2_charge = array ('f', [0.])
     #SL1_charge = array ('f', [0.])
@@ -457,6 +458,7 @@ def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale
     RTree.Branch('hit_strip',hit_strip,'hit_strip/I')
     RTree.Branch('clust_charge',clust_charge,'clust_charge/F')
     RTree.Branch('strip_charge',strip_charge,'strip_charge/F')
+    RTree.Branch('time',tdctime,'tdctime/F')
     #RTree.Branch('SR1_charge',SR1_charge,'SR1_charge/F')
     #RTree.Branch('SR2_charge',SR2_charge,'SR2_charge/F')
     #RTree.Branch('SL1_charge',SL1_charge,'SL1_charge/F')
@@ -538,6 +540,7 @@ def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale
    
     #Read Signal (full event)
     full_event = data3.get('signal')
+    tdctime[0] = data3.get('time')
     print('Full Event:\n', full_event.value[0], '\n', full_event.shape,'\n')
  
     event = 0
