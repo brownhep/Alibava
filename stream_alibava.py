@@ -46,8 +46,8 @@ Volts = vline.split(' ')
 print(filePrefix, folder, chips, Volts)
 f.close()
 
-#TFile_name = folder + filePrefix + '_Env.dat'
-#T_Array = get_tempdata(TFile_name, outfolder, filePrefix)
+TFile_name = folder + filePrefix + '_Env.dat'
+T_Array = get_tempdata(TFile_name, outfolder, filePrefix)
 
 bad_chans = []
 
@@ -70,11 +70,11 @@ for runNum in range(int(runMin),int(runMax)+1):
 			print("Preped",preped)
 			file_name = folder+root_name+'_Sr90.hdf'
 			cal_name = folder+root_name+'_Cal.hdf'
-			gain, badch = get_gains(cal_name, preped) 
+			gain, bad_chans = get_gains(cal_name, preped) 
 			if not os.path.isfile(file_name): file_name = folder + "Raw_Data_" + filePrefix + "_T" + str(runNum) + "_R" + i + ".hdf"
 			#Generates Pedestal from Signal Data
 			print ('Pedestal for ' + root_name +', ' + volt + ", R" + i)
-			#ped = get_pedestal(file_name, int(i), preped, 'R'+str(13-int(i)),RFile_name,scale)
+			ped = get_pedestal(file_name, int(i), preped, 'R'+str(13-int(i)),RFile_name,scale)
 			#Locates the bad Channels
 			#bad_chans = []
 			#bad_chans = find_bad_chans(file_name, int(i)i, ped, 'R'+str(13-int(i)),RFile_name,scale)
@@ -88,13 +88,13 @@ for runNum in range(int(runMin),int(runMax)+1):
 				strip[0] = y
 				badch[0] = 0
 				#if x in bad_chans:  badch[0] = 1
-				pd[0] = preped.GetBinContent(y+1) #Was running off ped instead of preped
-				noise[0] = preped.GetBinError(y+1)*R.TMath.Sqrt(preped.GetBinEntries(y+1))
+				pd[0] = ped.GetBinContent(y+1) #Was running off ped instead of preped
+				noise[0] = ped.GetBinError(y+1)*R.TMath.Sqrt(preped.GetBinEntries(y+1))
 				#print 'preped', x, preped.GetBinContent(y+1),preped.GetBinError(y+1)*R.sqrt(ped.GetBinEntries(y+1)), preped.GetBinEntries(y+1)
 				#print 'ped   ', x, ped.GetBinContent(y+1),ped.GetBinError(y+1)*R.sqrt(ped.GetBinEntries(y+1)), ped.GetBinEntries(y+1)
 				RTree.Fill()
 				
-			#get_signal(file_name, int(i), preped, 'R'+str(13-int(i)),RFile_name,bad_chans, runNum, scale, T_Array) # *****Try running off preped***** 
+			get_signal(file_name, int(i), ped, gain , 'R'+str(13-int(i)),RFile_name,bad_chans, runNum, scale, T_Array) # *****Try running off preped***** 
 
 
 ############ I comment this OUT!

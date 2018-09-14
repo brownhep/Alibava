@@ -201,6 +201,10 @@ def get_preped(file_name, title, chip, RFile_name = '', T_Data=0, scale = 1, Ped
     #h_length = int(z[3])
     #print (h_length)
     print('Time data:\n', tmstamp.value, '\n Time data Length:', tmstamp.shape)
+    #print('time 0 to 99:\n', tmstamp.value[0:99])
+    #print('time 5000 to 5999:\n', tmstamp.value[5000:5999])
+
+
 
     #Read Pedestals
     #y = f.read(256*4)
@@ -307,10 +311,13 @@ def get_preped(file_name, title, chip, RFile_name = '', T_Data=0, scale = 1, Ped
     hdf.close()
     return Ped_Data
 
-def get_pedestal(file_name, region, PrePed, title, RFile_name, scale = 1):
 
-    file = open(file_name, 'r')
-    
+#----Modify this to read RS run
+def get_pedestal(file_name, chip, PrePed, title, RFile_name, scale = 1):
+
+    file = h5py.File(file_name,'r')
+    data3= file.get('events')
+
     Ped_Data = R.TProfile('Ped Data ' + title,'Ped Data ' + title,256,0,256)
     Ped_Data.Sumw2()
     Ped_Data.SetOption('colz')
@@ -327,27 +334,31 @@ def get_pedestal(file_name, region, PrePed, title, RFile_name, scale = 1):
     RTree.Branch('stp',stp,'stp/I')
     RTree.Branch('ped',ped,'ped/F')
 
+    full_event = data3.get('signal')
+
     event_data = []
     event = 0
-    for line in file:
-        if line.count(',') > 3:
-            event += 1
-            if event % 4000 == 0: print(event/4)
-            full_event = [float(x) for x in line.replace('\r\t','').split('\t')[-1].split(',')]
-            if scale != 1: event_data += [x*192000.0/full_event[-1] for x in full_event[12:-1]]
-            else: event_data += full_event[12:-1]
-            if event % 4 == 0:
-                subtracted_event = [event_data[i] - PrePed.GetBinContent(i+1) for i in range(256)]
-                #print subtracted_event
-                max_chan = subtracted_event.index(max(subtracted_event[32*(region+1):32*(region+2)]))
-                for chan in range(len(event_data)):
-                    if chan < max_chan - 1 or chan > max_chan + 1:
-                        Ped_Data.Fill(chan, event_data[chan])
-                        if chan >= 32 * (region +1) and chan < 32 * (region +2): Total_Noise.Fill(subtracted_event[chan])
-                        stp[0] = chan
-                        ped[0] = event_data[chan]
-                        RTree.Fill()
-                event_data = []
+    #for line in file:
+        #if line.count(',') > 3:
+    for event_data in full_event:
+        event += 1
+        if event % 4000 == 0: print(event/4)
+        #full_event = [float(x) for x in line.replace('\r\t','').split('\t')[-1].split(',')]
+#
+        #event_data += [x*192000.0/full_event[-1] for x in full_event[12:-1]]
+        #else: event_data += full_event[12:-1]
+        #if event % 4 == 0:
+        subtracted_event = [event_data[i] - PrePed.GetBinContent(i+1) for i in range(256)]
+        #print subtracted_event
+        max_chan = subtracted_event.index(min(subtracted_event[128*chip:128*(chip+1)]))
+        for chan in range(len(event_data)):
+              if chan < max_chan - 1 or chan > max_chan + 1:
+                 Ped_Data.Fill(chan, event_data[chan])
+                 if chan >= 128 * chip and chan < 128 * (chip+1): Total_Noise.Fill(subtracted_event[chan])
+                 stp[0] = chan
+                 ped[0] = event_data[chan]
+                 RTree.Fill()
+        event_data = []
     file.close()
 
     if RFile_name != '':
@@ -420,7 +431,7 @@ def find_bad_chans(file_name, chip, Ped, title, RFile_name, scale = 1, extra = N
     print(bad_chans)
     return bad_chans
 
-def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale = 1, T_Array=0, stripstart=0, stripend=31, cut=0, extra = None):
+def get_signal(file_name, chip, Ped, gain,  title, RFile_name, bad_chans, RunNum, scale = 1, T_Array=0, stripstart=0, stripend=127, cut=0, extra = None):
 
     print ('strips', stripstart, stripend)
     if extra == None: extra = 'Chip'+str(chip)
@@ -478,25 +489,37 @@ def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale
     CMs.Sumw2()
     CMs.SetOption('hist')
     
-    Sig_Data = R.TProfile(extra + ' Data',extra + ' Data',32, 0, 32)
+    Sig_Data = R.TProfile(extra + ' Data',extra + ' Data',128, 0, 128)
     Sig_Data.Sumw2()
     Sig_Data.SetOption('colz')
 
     h_name_fine_bin = extra + ' Signal_' + '1000' + 'Bins'
     h_name_fine_bin_clust = extra + ' Signal_' + '1000' + 'Bins_clust'
     h_name_coarse_bin_clust = extra + ' Signal_' + '100' + 'Bins_clust'
-    SignalHist1 = R.TH1D(h_name_fine_bin, h_name_fine_bin, 1000, 0, 100*scale)
+ 
+    SignalHist1 = R.TH1D(h_name_fine_bin, h_name_fine_bin, 1000, 0,100*scale)
     SignalHist1.Sumw2()
     SignalHist1.SetOption('hist')
     SignalHist2 = R.TH1D(h_name_fine_bin_clust, h_name_fine_bin_clust, 1000, 0, 100*scale)
     SignalHist2.Sumw2()
     SignalHist2.SetOption('hist')
-    SignalHist3 = R.TH1D(h_name_coarse_bin_clust, h_name_coarse_bin_clust, 100, 0, 100*scale)
+    SignalHist3 = R.TH1D(h_name_coarse_bin_clust, h_name_coarse_bin_clust, 100, 0,100*scale)
     SignalHist3.Sumw2()
     SignalHist3.SetOption('hist')
     EtaHist = R.TH1D("Eta","Eta", 120, -0.1, 1.1)
     EtaHist.Sumw2()
     EtaHist.SetOption('hist')
+
+    #---------ADC to e-
+    h_name_Qseed = extra + 'QSignal_'
+    h_name_Qtotal = extra + 'QTotal_'
+    SignalHist4 = R.TH1D(h_name_Qseed ,h_name_Qseed , 100, 0, 100*scale)
+    SignalHist4.Sumw2()
+    SignalHist4.SetOption('hist')
+    SignalHist5 = R.TH1D(h_name_Qtotal , h_name_Qtotal , 100, 0,100*scale)
+    SignalHist5.Sumw2()
+    SignalHist5.SetOption('hist')
+
 
     #Creates TObject to store time
     StartTime = R.TVectorF(1)
@@ -522,58 +545,58 @@ def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale
     #Read Data header
     data3=f.get('events')
     header=data3.get('header')
-    print ('Header:\n', header.value,'\n', header.shape,'\n')
+    #print ('Header:\n', header.value,'\n', header.shape,'\n')
     tmstamp = data3.get('clock') 
-    print ('Time:\n', tmstamp.value,'\n', tmstamp.shape,'\n')
+    #print ('Time:\n', tmstamp.value,'\n', tmstamp.shape,'\n')
 
     #Read Pedestals
     #y = f.read(256*4)
     data1=f.get('header')
     pedAli = data1.get('pedestal')
-    print('Pedestals:\n',pedAli.value , '\n', pedAli.shape,'\n')
+    #print('Pedestals:\n',pedAli.value , '\n', pedAli.shape,'\n')
 
     #Read Noise
     noise = data1.get('noise')
-    print('noise\n', noise.value, '\n', noise.shape,'\n')
+    #print('noise\n', noise.value, '\n', noise.shape,'\n')
    
     #Read Signal (full event)
     full_event = data3.get('signal')
-    print('Full Event:\n', full_event.value[0], '\n', full_event.shape,'\n')
+    #print('Full Event:\n', full_event.value[0], '\n', full_event.shape,'\n')
  
     event = 0
     for event_data in full_event: #if run through 0-1000 events, type: full_event[:1000]
         event += 1
         print (event)
-    tmstamp = 0
-    tca = get_temp (T_Array, tmstamp, Tindex)
-    T_Chuck[0] = tca[0]
-    Tindex = tca[1]
-    if StartTemp[0] < 90: StartTemp[0] = T_Chuck[0]
+        tmstamp = 0
+        tca = get_temp (T_Array, tmstamp, Tindex)
+        T_Chuck[0] = tca[0]
+        Tindex = tca[1]
+        if StartTemp[0] < 90: StartTemp[0] = T_Chuck[0]
 
-    if event % 4000 == 0: print(event/4) #print status
+        if event % 4000 == 0: print(event/4) #print status
             
    # if scale != 1: event_data += [x*192000.0/full_event[-1] for x in full_event]
     #else: event_data += full_event
             
-    eventno[0] = event
+        eventno[0] = event
 
-    subtracted_event = [event_data[i] - Ped.GetBinContent(i+1) for i in range(256)]
-    apv_event = subtracted_event[chip*128:(chip+1)*128]
+        subtracted_event = [event_data[i] - Ped.GetBinContent(i+1) for i in range(256)]
+        apv_event = subtracted_event[chip*128:(chip+1)*128]
         #reg_event = subtracted_event[32*(region+1):32*(region+2)]
                 
-    for chan in range(len(apv_event)):
-                Sig_Data.Fill(chan, apv_event[chan])
+        for chan in range(len(apv_event)):
+                    Sig_Data.Fill(chan, apv_event[chan])
 
                 #print max(subtracted_event), subtracted_event.index(max(subtracted_event))/32 - 1, max(reg_event), reg_event.index(max(reg_event))
                 #raw_input('')
                 
-    eventSN = []
-    for i in range(256):
-                if Ped.GetBinError(i+1) == 0: eventSN.append(0)
-                else: eventSN.append( subtracted_event[i]/float(Ped.GetBinError(i+1)*R.TMath.Sqrt(Ped.GetBinEntries(i+1))) )
+        eventSN = []
+        for i in range(256):
+                    if Ped.GetBinError(i+1) == 0: eventSN.append(0)
+                    else: eventSN.append( subtracted_event[i]/float(Ped.GetBinError(i+1)*R.TMath.Sqrt(Ped.GetBinEntries(i+1))) )
             
             
-    apvSN = eventSN[chip*128:(chip+1)*128]
+        apvSN = eventSN[chip*128:(chip+1)*128]
         #regSN = eventSN[32*(region+1):32*(region+2)]
 
                 #for i in xrange(len(regSN)):
@@ -581,34 +604,34 @@ def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale
                 #        if regSN[i] > 2.5: hit2 += 1
                 #        if regSN[i] > 2.25: hit1 += 1
                 
-    chan_nums = [i for i in range(128)]
+        chan_nums = [i for i in range(128)]
                 
-    good_apvevt = [apv_event[i] for i in range(128) if i not in bad_chans]
-    good_apvSN = [apvSN[i] for i in range(128) if i not in bad_chans]
-    goodchan_nums = [chan_nums[i] for i in range(128) if i not in bad_chans]
+        good_apvevt = [apv_event[i] for i in range(128) if i not in bad_chans]
+        good_apvSN = [apvSN[i] for i in range(128) if i not in bad_chans]
+        goodchan_nums = [chan_nums[i] for i in range(128) if i not in bad_chans]
                 
                 #Takes max signal to noise
                 #good_max_reg_chan = good_regSN.index(max(good_regSN))
-    good_max_apv_chan = good_apvevt.index(max(good_apvevt))
-    max_apv_chan = goodchan_nums[good_max_apv_chan]
-                
-    if max_apv_chan in bad_chans: print(max_apv_chan)
-    max_all_chan = chip*128 + max_apv_chan
-    hit_strip[0] = max_apv_chan
-    Noisehit = False
-    if max_apv_chan < stripstart or max_apv_chan > stripend:
-                Noisehit = True
-                Nnoisehits += 1
+        good_max_apv_chan = good_apvevt.index(min(good_apvevt))
+        max_apv_chan = goodchan_nums[good_max_apv_chan]
+        print(event, max_apv_chan)            
+        if max_apv_chan in bad_chans: print(max_apv_chan)
+        max_all_chan = chip*128 + max_apv_chan
+        hit_strip[0] = max_apv_chan
+        Noisehit = False
+        if max_apv_chan < stripstart or max_apv_chan > stripend:
+                    Noisehit = True
+                    Nnoisehits += 1
 
-    CM = sum(apv_event) - apv_event[max_apv_chan]
-    count = 127.0
+        CM = sum(apv_event) - apv_event[max_apv_chan]
+        count = 127.0
 
         #Loop over APV events and subtract off neighbors of the hit strip and bad/noisy channels
-    for i in range(128):
-        if abs(max_apv_chan - 1) == 1:
+        for i in range(128):
+            if abs(max_apv_chan - i) == 1:
                         CM -= apv_event[i]
                         count -= 1
-        if ((128*chip) + i) in bad_chans:
+            if ((128*chip) + i) in bad_chans:
                         #print "removing bad_chan", i, apv_event[i]
                         CM -= apv_event[i]
                         count -= 1
@@ -617,7 +640,7 @@ def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale
         CMs.Fill(CM)
         CM_noise[0] = CM
         NoisyEvt = False
-        if abs(CM) > 5:        
+        if abs(CM) > 10:        
                 NoisyEvt = True
                 NnoisyEvts+=1
 
@@ -632,7 +655,8 @@ def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale
         seed_signal = apv_event[max_apv_chan] - CM
         total_signal = seed_signal
         strip_charge[0] = seed_signal
-
+        Qseed_signal = seed_signal * gain[max_apv_chan]
+        Qtotal_signal = Qseed_signal
                 #If hit is not on edges record entire 4 strip cluster
                 #Possibly a bias if significant number of apv_evt[chan-1] = apv_evt[chan+1]
         wholecluster = False
@@ -658,15 +682,21 @@ def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale
                 #Now just add neighbors without doing a cut
         if (max_apv_chan + 1) < 128:
                 total_signal += apv_event[max_apv_chan+1] - CM
+                Qtotal_signal += (apv_event[max_apv_chan+1] - CM) * gain[max_apv_chan]
+
                     #if (apv_event[max_apv_chan+1]-CM) > 1*Ped.GetBinError(max_all_chan + 1 + 1)*R.sqrt(Ped.GetBinEntries(max_all_chan + 1 + 1)): total_signal += apv_event[max_apv_chan+1] - CM
                     #SR1_charge[0] = apv_event[max_apv_chan+1] - CM
                     #if (max_reg_chan + 2) < 32:  SR2_charge[0] = apv_event[max_apv_chan+2] - CM
         if (max_apv_chan - 1) > -1:
                 total_signal += apv_event[max_apv_chan-1] - CM
+                Qtotal_signal += (apv_event[max_apv_chan-1] -CM) * gain[max_apv_chan]
                     #if (apv_event[max_apv_chan-1]-CM) > 1*Ped.GetBinError(max_all_chan - 1 + 1)*R.sqrt(Ped.GetBinEntries(max_all_chan - 1 + 1)): total_signal += apv_event[max_apv_chan-1] - CM
                     #SL1_charge[0] = apv_event[max_apv_chan-1] - CM
                     #if (max_reg_chan - 2) > -1:  SL2_charge[0] = apv_event[max_apv_chan-2] - CM
                         
+               
+
+
         clust_charge[0] = total_signal
 
                 #Mark soft events (less than 3x noise) in tree (was previously 5x noise)
@@ -676,7 +706,7 @@ def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale
                 #        sig_noise[0] = 0
                 #else: sig_noise[0] = float(reg_event[max_reg_chan])/(Ped.GetBinError(max_all_chan + 1)*R.sqrt(Ped.GetBinEntries(max_all_chan + 1)))
         sig_noise[0] = float(apv_event[max_apv_chan])/(Ped.GetBinError(max_all_chan + 1)*R.TMath.Sqrt(Ped.GetBinEntries(max_all_chan + 1)))
-        if (apv_event[max_apv_chan]-CM) < cut*Ped.GetBinError(max_all_chan + 1)*R.TMath.Sqrt(Ped.GetBinEntries(max_all_chan + 1)):
+        if abs(apv_event[max_apv_chan]-CM) < cut*Ped.GetBinError(max_all_chan + 1)*R.TMath.Sqrt(Ped.GetBinEntries(max_all_chan + 1)):
                 soft_evt[0] = 1
                 #if (total_signal) < cut*Ped.GetBinError(max_all_chan + 1)*R.sqrt(Ped.GetBinEntries(max_all_chan + 1)):
                 #    soft_evt[0] = 1
@@ -695,7 +725,7 @@ def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale
                 #print eta[0], R0, L0, R1, L1
                 RTree.Fill()
 
-        if (apv_event[max_apv_chan]-CM) < cut*Ped.GetBinError(max_all_chan + 1)*R.TMath.Sqrt(Ped.GetBinEntries(max_all_chan + 1)):
+        if abs(apv_event[max_apv_chan]-CM) < cut*Ped.GetBinError(max_all_chan + 1)*R.TMath.Sqrt(Ped.GetBinEntries(max_all_chan + 1)):
                 NsoftSignal+=1
                 event_data = []
                 continue
@@ -708,10 +738,11 @@ def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale
                     continue
                 
         NgoodEvts+=1
-        SignalHist1.Fill(seed_signal)
-        SignalHist2.Fill(total_signal)
-        SignalHist3.Fill(total_signal)
-
+        SignalHist1.Fill(-1*seed_signal)
+        SignalHist2.Fill(-1*total_signal)
+        SignalHist3.Fill(-1*total_signal)
+        SignalHist4.Fill(-1*Qseed_signal)
+        SignalHist5.Fill(-1*Qtotal_signal)
                 
         event_data = []
 
@@ -741,6 +772,8 @@ def get_signal(file_name, chip, Ped, title, RFile_name, bad_chans, RunNum, scale
         SignalHist2.Write("",R.TObject.kOverwrite)
         SignalHist3.Write("",R.TObject.kOverwrite)
         EtaHist.Write("",R.TObject.kOverwrite)
+        SignalHist4.Write("",R.TObject.kOverwrite)
+        SignalHist5.Write("",R.TObject.kOverwrite)   
         #RTree = RTree.Write("",R.TObject.kOverwrite)
         RFile.Close()
 
